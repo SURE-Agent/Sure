@@ -1,0 +1,17 @@
+services:
+  sure-bot:
+    build: .
+    container_name: sure-bot
+    ports:
+      - "8501:8501"
+    env_file:
+      - .env
+    volumes:
+      # ── Hot-reload: monta el código fuente para que los cambios
+      #    se reflejen automáticamente sin rebuild/restart ──
+      - .:/app
+
+    # Habilita el file-watcher de Streamlit para auto-reload
+    environment:
+      - STREAMLIT_SERVER_FILE_WATCHER_TYPE=poll
+    restart: unless-stopped
