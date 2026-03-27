@@ -5,9 +5,11 @@ import streamlit as st
 
 from src.agent import get_client, create_thread, send_message, get_thread_messages
 from src.citations import process_citations
+from src.governance import validate_input
 from src.config import AGENT_ID, SPEECH_KEY, SPEECH_REGION
 from src.components.voice import realtime_voice
 from src.history import save_thread, load_history
+from src.pii import mask_pii
 
 # ── Configuración de página ──────────────────────────────
 st.set_page_config(
@@ -177,6 +179,11 @@ else:
     final_prompt = None
     prompt_source = None
 
+# ── Enmascaramiento de PII (Datos Sensibles) ──────────────
+if final_prompt:
+    # Gobernanza: Validar entrada y enmascarar PII antes de mostrar en el chat
+    is_valid, reason, final_prompt = validate_input(final_prompt)
+
 if final_prompt:
     # Si es el primer mensaje, guardamos el hilo en el historial
     if not st.session_state.messages:
@@ -191,11 +198,15 @@ if final_prompt:
         try:
             with st.spinner("Analizando documentos técnicos..."):
                 resultado = send_message(client, thread_id, AGENT_ID, final_prompt)
-                respuesta = process_citations(
-                    resultado["value"],
-                    resultado["annotations"],
-                    client,
-                )
+                
+                if resultado.get("governance_violation"):
+                    respuesta = resultado["value"]
+                else:
+                    respuesta = process_citations(
+                        resultado["value"],
+                        resultado["annotations"],
+                        client,
+                    )
 
             st.write_stream(transmitir_texto(respuesta))
             

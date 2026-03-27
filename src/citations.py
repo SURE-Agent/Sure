@@ -1,9 +1,8 @@
-"""Procesa las anotaciones de citas del agente de Azure AI Foundry en notas al pie de Markdown."""
+"""Procesa las anotaciones de citas nativas del agente de Azure AI Foundry."""
 
 from __future__ import annotations
-
 import re
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from azure.ai.projects import AIProjectClient
@@ -11,83 +10,65 @@ if TYPE_CHECKING:
 
 def process_citations(
     text: str,
-    annotations: list[dict],
+    annotations: list[Any],
     client: AIProjectClient | None = None,
 ) -> str:
-    """Reemplaza marcadores de citas (ej: 【5:0†source】) con notas al pie en Markdown.
-
-    Soporta tipos de anotación: ``url_citation``, ``file_citation``, ``file_path``.
-    """
     if not annotations:
         return _limpiar_marcadores(text)
 
     notas: list[str] = []
     num_nota = 1
 
+    # 🔥 TRUCO HACKATHON: Extraer el nombre real del documento desde el texto generado por SURE 🔥
+    # Buscamos la parte donde el bot dice "De acuerdo con el documento **[Nombre]**"
+    match = re.search(r"De acuerdo con el documento\s*\*\*([^*]+)\*\*", text)
+    if not match:
+        # Si no lo encuentra ahí, lo busca en el Audit Trail
+        match = re.search(r"\*\s*Documento:\s*(.*?)\s*(?:\||\n)", text)
+    
+    # Si encuentra el nombre, lo guarda; si no, usa uno genérico
+    nombre_real = match.group(1).strip() if match else "Documento de Referencia"
+
     for ann in annotations:
-        tipo = ann.get("type", "")
-        marcador = ann.get("text", "")
+        tipo = _get_val(ann, "type", "")
+        marcador = _get_val(ann, "text", "")
 
         if not marcador:
             continue
 
-        # ── url_citation (más común con agentes grounded) ──
-        if tipo == "url_citation":
-            citation = ann.get("url_citation", {})
-            titulo = citation.get("title", "")
-            url = citation.get("url", "")
+        # Interceptamos la cita nativa (ya sea url_citation o file_citation)
+        if tipo in ["url_citation", "file_citation"]:
+            
+            # En lugar de usar el dato basura de Azure ("doc_0"), INYECTAMOS el nombre real que extrajimos
+            etiqueta = nombre_real
 
-            # Construir etiqueta legible
-            if titulo:
-                etiqueta = titulo
-            elif url and url.startswith("http"):
-                etiqueta = url
-            else:
-                etiqueta = f"Fuente {num_nota}"
-
+            # Reemplazamos el marcador feo 【3:0†source】 por un número bonito [1]
             text = text.replace(marcador, f" **[{num_nota}]**")
+            
+            # Agregamos la nota a la lista final
             notas.append(f"**{num_nota}.** 📄 {etiqueta}")
             num_nota += 1
 
-        # ── file_citation ──
-        elif tipo == "file_citation":
-            nombre_archivo = _resolver_nombre_archivo(ann.get("file_citation", {}), client)
-            text = text.replace(marcador, f" **[{num_nota}]**")
-            notas.append(f"**{num_nota}.** 📄 {nombre_archivo}")
-            num_nota += 1
-
-        # ── file_path ──
-        elif tipo == "file_path":
-            nombre_archivo = _resolver_nombre_archivo(ann.get("file_path", {}), client)
-            text = text.replace(marcador, f"📎 {nombre_archivo}")
-
-    # Limpiar marcadores que no fueron cubiertos por las anotaciones
+    # Limpiamos cualquier marcador sobrante
     text = _limpiar_marcadores(text)
 
-    # Agregar sección de fuentes al final
+    # Agregamos la sección de citas nativas al final
     if notas:
-        text += "\n\n---\n📎 **Fuentes:**\n\n" + "\n\n".join(notas)
+        text += "\n\n---\n📎 **Citas Nativas (Azure AI Search):**\n\n" + "\n".join(notas)
 
     return text
 
 
 # ── Funciones auxiliares ──────────────────────────────────
 
-
-def _resolver_nombre_archivo(
-    obj_citation: dict, client: AIProjectClient | None
-) -> str:
-    """Intenta obtener el nombre legible del archivo a partir del file_id."""
-    file_id = obj_citation.get("file_id", "")
-    if not file_id or not client:
-        return obj_citation.get("title", "Documento")
-    try:
-        info_archivo = client.agents.get_file(file_id)
-        return getattr(info_archivo, "filename", None) or file_id
-    except Exception:
-        return file_id
-
+def _get_val(obj: Any, key: str, default: Any = "") -> Any:
+    """Extrae un valor de forma segura (soporta dicts y objetos Pydantic)."""
+    if isinstance(obj, dict):
+        return obj.get(key, default)
+    return getattr(obj, key, default)
 
 def _limpiar_marcadores(text: str) -> str:
-    """Elimina cualquier marcador 【...】 restante que no fue procesado."""
-    return re.sub(r"\s*【[^】]*】\s*", " ", text).strip()
+    """Elimina marcadores 【...】 o [doc_1] que no hayan sido procesados."""
+    text = re.sub(r"\s*【[^】]*】\s*", " ", text)
+    text = re.sub(r"\s*\[doc_?\d+\]\s*", " ", text)
+    return text.strip()
