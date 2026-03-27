@@ -62,4 +62,27 @@ def send_message(
             }
         return {"value": str(text_obj), "annotations": []}
 
-    return {"value": "", "annotations": []}
+def get_thread_messages(client: AIProjectClient, thread_id: str) -> list[dict]:
+    """Obtiene todos los mensajes de un hilo y los formatea para el estado de Streamlit."""
+    api_messages = client.agents.list_messages(thread_id=thread_id)
+    formatted_messages = []
+    
+    # list_messages devuelve los mensajes en orden cronológico inverso (el más reciente primero)
+    # Queremos mostrarlos en orden cronológico para el chat
+    for msg in reversed(list(api_messages.data)):
+        role = msg.role
+        content = ""
+        for content_part in msg.content:
+            if hasattr(content_part, 'text'):
+                content += content_part.text.value
+            elif isinstance(content_part, dict) and 'text' in content_part:
+                content += content_part['text'].get('value', '')
+        
+        if content:
+            formatted_messages.append({
+                "role": role,
+                "content": content,
+                "source": "text" # Asumimos texto por defecto al recargar
+            })
+            
+    return formatted_messages

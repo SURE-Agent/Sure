@@ -5,3 +5,14 @@ __pycache__
 .venv
 .mypy_cache
 .pytest_cache
+.vscode
+.idea
+*.log
+.DS_Store
+.github
+README.md
+Dockerfile
+docker-compose.yml
+brain
+tmp
+

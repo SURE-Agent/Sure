@@ -3,10 +3,11 @@
 import time
 import streamlit as st
 
-from src.agent import get_client, create_thread, send_message
+from src.agent import get_client, create_thread, send_message, get_thread_messages
 from src.citations import process_citations
 from src.config import AGENT_ID, SPEECH_KEY, SPEECH_REGION
 from src.components.voice import realtime_voice
+from src.history import save_thread, load_history
 
 # ── Configuración de página ──────────────────────────────
 st.set_page_config(
@@ -32,6 +33,28 @@ with st.sidebar:
     if st.button("🗑️ Nueva conversación", use_container_width=True, type="primary"):
         st.session_state.clear() # Borra todo de forma más segura
         st.rerun()
+
+    # Nuevo botón para ver el historial
+    if st.button("📜 Ver historial", use_container_width=True):
+        st.session_state.show_history = not st.session_state.get("show_history", False)
+        st.rerun()
+
+    if st.session_state.get("show_history", False):
+        st.divider()
+        st.subheader("Conversaciones pasadas")
+        history = load_history()
+        if not history:
+            st.caption("No hay conversaciones previas.")
+        else:
+            for item in history:
+                # Mostrar botón con el título y la fecha (opcional acortada)
+                if st.button(f"🕒 {item['title']}", key=item['thread_id'], use_container_width=True):
+                    with st.spinner("Cargando conversación..."):
+                        client = get_client()
+                        st.session_state.messages = get_thread_messages(client, item['thread_id'])
+                        st.session_state.thread_id = item['thread_id']
+                        st.session_state.show_history = False
+                    st.rerun()
 
 # ── Cliente e hilo de conversación ───────────────────────
 client = get_client()
@@ -155,6 +178,10 @@ else:
     prompt_source = None
 
 if final_prompt:
+    # Si es el primer mensaje, guardamos el hilo en el historial
+    if not st.session_state.messages:
+        save_thread(st.session_state.thread_id, final_prompt)
+
     st.session_state.messages.append({"role": "user", "content": final_prompt, "source": prompt_source})
     with st.chat_message("user", avatar="👤"):
         st.markdown(final_prompt)
