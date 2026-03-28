@@ -74,7 +74,7 @@ if st.session_state.get("show_pipeline", False):
     st.stop()
 
 # ── Cliente e hilo de conversación ───────────────────────
-client = get_client()
+client = None
 
 if "messages" not in st.session_state:
     st.session_state.messages = []
