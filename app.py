@@ -11,6 +11,9 @@ from src.components.voice import realtime_voice
 from src.history import save_thread, load_history
 from src.pii import mask_pii
 
+import logging
+logging.getLogger("azure.core.pipeline.policies.http_logging_policy").setLevel(logging.WARNING)
+
 # ── Configuración de página ──────────────────────────────
 st.set_page_config(
     page_title="Sure Agent",
@@ -39,6 +42,12 @@ with st.sidebar:
     # Nuevo botón para ver el historial
     if st.button("📜 Ver historial", use_container_width=True):
         st.session_state.show_history = not st.session_state.get("show_history", False)
+        st.session_state.show_pipeline = False
+        st.rerun()
+
+    if st.button("⚙️ Subir documento", use_container_width=True):
+        st.session_state.show_pipeline = not st.session_state.get("show_pipeline", False)
+        st.session_state.show_history = False
         st.rerun()
 
     if st.session_state.get("show_history", False):
@@ -60,6 +69,12 @@ with st.sidebar:
 
     st.divider()
     st.caption("🛡️ **Declaración de IA**: SURE es una inteligencia artificial y puede cometer errores. Verifica siempre la información importante.")
+
+# Renderizar pipeline si está activo y detener ejecución del chat
+if st.session_state.get("show_pipeline", False):
+    from src.components.pipeline_ui import render_pipeline
+    render_pipeline()
+    st.stop()
 
 # ── Cliente e hilo de conversación ───────────────────────
 client = get_client()
